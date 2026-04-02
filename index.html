@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BulkSub | Mass YouTube Subtitle Downloader</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@500;700;800&display=swap"
+        rel="stylesheet">
+
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        /* Modern CSS Reset & Color Palette via OKLCH */
+        :root {
+            --bg-color: oklch(0.97 0.01 95);
+            /* Warm, raw paper off-white */
+            --ink: oklch(0.15 0.02 250);
+            /* Deep charcoal/ink, not pure black */
+            --accent: oklch(0.60 0.22 25);
+            /* Sharp, utilitarian vermilion/red */
+            --error: oklch(0.55 0.20 20);
+
+            --font-display: 'Syne', sans-serif;
+            --font-mono: 'Space Mono', monospace;
+
+            --border-heavy: 3px solid var(--ink);
+            --border-light: 1px solid var(--ink);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--ink);
+            font-family: var(--font-display);
+            line-height: 1.2;
+            height: 100dvh;
+            /* Fluid viewport height */
+            overflow: hidden;
+            /* Prevent body scroll, let columns handle it */
+        }
+
+        /* Fluid, Asymmetric Layout (Tier 1: Mobile Base) */
+        .layout-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            height: 100dvh;
+            width: 100%;
+            overflow-y: auto;
+            /* Allow scrolling on stacked mobile view */
+        }
+
+        /* Left Column: Content & Form */
+        .content-section {
+            padding: 3rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            border-bottom: var(--border-heavy);
+            position: relative;
+        }
+
+        .badge {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: -0.05em;
+            border: var(--border-heavy);
+            display: inline-block;
+            padding: 0.4rem 0.8rem;
+            align-self: flex-start;
+            margin-bottom: 2rem;
+            font-weight: 700;
+            background-color: var(--ink);
+            color: var(--bg-color);
+        }
+
+        h1 {
+            font-size: clamp(3rem, 12vw, 4rem);
+            font-weight: 800;
+            letter-spacing: -0.04em;
+            margin-bottom: 1.5rem;
+            text-wrap: balance;
+            line-height: 0.95;
+        }
+
+        p.subtitle {
+            font-family: var(--font-mono);
+            font-size: 1rem;
+            line-height: 1.6;
+            max-width: 500px;
+            margin-bottom: 3rem;
+            color: oklch(0.35 0.02 250);
+        }
+
+        /* Form Styling - Brutalist & Functional */
+        .form-container {
+            position: relative;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        input[type="email"] {
+            font-family: var(--font-mono);
+            font-size: 1rem;
+            padding: 1.25rem;
+            background: transparent;
+            border: var(--border-heavy);
+            color: var(--ink);
+            outline: none;
+            transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            width: 100%;
+        }
+
+        input[type="email"]:focus {
+            transform: translate(-4px, -4px);
+            box-shadow: 6px 6px 0px var(--accent);
+        }
+
+        input[type="email"]::placeholder {
+            color: oklch(0.65 0.02 250);
+        }
+
+        button {
+            font-family: var(--font-mono);
+            font-weight: 700;
+            font-size: 1.1rem;
+            text-transform: uppercase;
+            background-color: var(--accent);
+            color: var(--bg-color);
+            border: var(--border-heavy);
+            padding: 1.25rem;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem;
+            width: 100%;
+        }
+
+        button:hover:not(:disabled) {
+            background-color: var(--ink);
+            transform: translate(-4px, -4px);
+            box-shadow: 6px 6px 0px var(--accent); 
+        }
+
+        button:active:not(:disabled) {
+            transform: translate(0, 0);
+            box-shadow: none;
+        }
+
+        button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        .error-message {
+            font-family: var(--font-mono);
+            color: var(--error);
+            font-size: 0.85rem;
+            margin-top: 0.75rem;
+            height: 1rem;
+            opacity: 0;
+            transform: translateY(-5px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            font-weight: 700;
+        }
+
+        .error-message.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Success State UI */
+        .success-state {
+            display: none;
+            flex-direction: column;
+            gap: 1rem;
+            animation: slideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        .success-state.visible {
+            display: flex;
+        }
+
+        .success-state h2 {
+            font-size: clamp(2rem, 8vw, 3.5rem);
+            font-weight: 800;
+            color: var(--accent);
+            line-height: 1;
+        }
+
+        .success-state p {
+            font-family: var(--font-mono);
+            font-size: 1.1rem;
+            line-height: 1.5;
+            max-width: 450px;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Right Column: Terminal/CLI Visual Nod */
+        .visual-section {
+            background-color: var(--ink);
+            padding: 3rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .terminal-window {
+            border: 2px solid oklch(0.4 0.02 250);
+            background-color: oklch(0.1 0.02 250);
+            color: oklch(0.85 0.02 250);
+            font-family: var(--font-mono);
+            font-size: clamp(0.75rem, 2vw, 1rem);
+            padding: 1.5rem;
+            box-shadow: -8px 8px 0px var(--accent);
+            max-width: 600px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .terminal-header {
+            border-bottom: 2px solid oklch(0.4 0.02 250);
+            padding-bottom: 1rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            color: oklch(0.5 0.02 250);
+        }
+
+        .terminal-body p {
+            margin-bottom: 0.5rem;
+            line-height: 1.5;
+            word-break: break-all;
+            /* Prevent long URLs from breaking terminal box */
+        }
+
+        .blink {
+            animation: blinker 1s linear infinite;
+            background-color: var(--accent);
+            color: var(--accent);
+            display: inline-block;
+            width: 10px;
+            height: 1.2em;
+            vertical-align: middle;
+        }
+
+        @keyframes blinker {
+            50% {
+                opacity: 0;
+            }
+        }
+
+        /* --- 5-TIER RESPONSIVE SYSTEM --- */
+
+        /* Tier 2: Tablets (768px+) */
+        @media (min-width: 768px) {
+
+            .content-section,
+            .visual-section {
+                padding: 4rem 3rem;
+            }
+
+            .badge {
+                margin-bottom: 3rem;
+            }
+
+            h1 {
+                font-size: 4.5rem;
+            }
+
+            p.subtitle {
+                font-size: 1.15rem;
+            }
+
+            .terminal-window {
+                padding: 2rem;
+                box-shadow: -15px 15px 0px var(--accent);
+            }
+        }
+
+        /* Tier 3: Laptops / 15.3" Screens (1024px+) */
+        @media (min-width: 1024px) {
+            .layout-grid {
+                grid-template-columns: 1fr 1fr;
+                /* 50/50 split to save horizontal space */
+                overflow-y: hidden;
+                /* Lock the wrapper */
+            }
+
+            .content-section {
+                border-bottom: none;
+                border-right: var(--border-heavy);
+                overflow-y: auto;
+                /* Allow column to scroll if screen height is short */
+                padding: clamp(2rem, 5vmin, 4rem) 3rem;
+            }
+
+            .visual-section {
+                overflow-y: auto;
+                padding: clamp(2rem, 5vmin, 4rem) 3rem;
+            }
+
+            h1 {
+                /* Scale font dynamically relative to screen height */
+                font-size: clamp(3rem, 7vmin, 5rem);
+            }
+
+            p.subtitle {
+                margin-bottom: 2rem;
+            }
+        }
+
+        /* Tier 4: Standard Desktops (1440px+) */
+        @media (min-width: 1440px) {
+            .layout-grid {
+                grid-template-columns: 1.2fr 1fr;
+                /* Restore asymmetric split */
+            }
+
+            .content-section {
+                padding: 4rem 5rem;
+            }
+
+            .visual-section {
+                padding: 4rem 5rem;
+            }
+
+            h1 {
+                font-size: 6rem;
+            }
+        }
+
+        /* Tier 5: Ultrawide Monitors (1920px+) */
+        @media (min-width: 1920px) {
+            body {
+                display: flex;
+                justify-content: center;
+                background-color: #e5e5e5;
+                /* Contrast frame */
+            }
+
+            .layout-grid {
+                max-width: 2560px;
+                background-color: var(--bg-color);
+                border-left: var(--border-heavy);
+                border-right: var(--border-heavy);
+            }
+
+            h1 {
+                font-size: 7rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <main class="layout-grid">
+        <section class="content-section">
+            <div class="badge">Chrome Extension</div>
+
+            <h1>Bulksub.</h1>
+
+            <p class="subtitle">
+                Stop downloading YouTube subtitles one by one.<br><br>
+                BulkSub lets you instantly export clean text transcripts from <strong>entire channels</strong> and
+                <strong>massive playlists</strong> straight into a well-organized ZIP file.
+            </p>
+
+            <div class="form-container" id="form-wrapper">
+                <form id="waitlist-form" novalidate>
+                    <div class="input-group">
+                        <input type="email" id="email" placeholder="name@company.com" required autocomplete="email">
+                        <button type="submit" id="submit-btn">Get Early Access</button>
+                    </div>
+                    <div class="error-message" id="error-msg">Please enter a valid email address.</div>
+                </form>
+            </div>
+
+            <div class="success-state" id="success-wrapper">
+                <h2>You're on the list.</h2>
+                <p>Keep an eye on your inbox. We'll send you an exclusive download link as soon as the beta is live.</p>
+            </div>
+        </section>
+
+        <section class="visual-section">
+            <div class="terminal-window">
+                <div class="terminal-header">
+                    <span>BulkSub Action Log</span>
+                    <span>[Live Preview]</span>
+                </div>
+                <div class="terminal-body">
+                    <p>> Analyzing target URL...</p>
+                    <p>> Target: YouTube Channel -> "Huberman Lab"</p>
+                    <p>> Scanning video catalog...</p>
+                    <p>> Found 184 available transcripts.</p>
+                    <p style="color: var(--accent);">> Processing downloads: 184/184 [Complete]</p>
+                    <p>> Packaging into transcripts_huberman.zip...</p>
+                    <p>> Ready. <span class="blink"></span></p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // --- CONFIGURATION ---
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz6CTtKAZsHPEInX2JkzU6tDmdDuQWx68P4ytwQhViZqWiwBKmiMcUrO-N5zy36cBVweQ/exec";
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('waitlist-form');
+            const emailInput = document.getElementById('email');
+            const errorMsg = document.getElementById('error-msg');
+            const formWrapper = document.getElementById('form-wrapper');
+            const successWrapper = document.getElementById('success-wrapper');
+            const submitBtn = document.getElementById('submit-btn');
+
+            // Standard email regex validation
+            const isValidEmail = (email) => {
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                return emailRegex.test(email);
+            };
+
+            // Fetch User Info (IP, Location)
+            async function getUserInfo() {
+                try {
+                    const res = await fetch("https://ipapi.co/json/");
+                    const data = await res.json();
+                    return {
+                        country: data.country_name || "Unknown",
+                        countryCode: data.country || "Unknown",
+                        ip: data.ip || "Unknown"
+                    };
+                } catch (err) {
+                    return { country: "Unknown", countryCode: "Unknown", ip: "Unknown" };
+                }
+            }
+
+            // Confetti mapped to the Brutalist color palette
+            const triggerConfetti = () => {
+                var count = 200;
+                var defaults = {
+                    origin: { y: 0.7, x: 0.3 }, // Fires from the left column
+                    colors: ['#262626', '#E64D1A', '#F2F2F2'] // Approximate hex values for ink, accent, bg
+                };
+
+                function fire(particleRatio, opts) {
+                    confetti(Object.assign({}, defaults, opts, {
+                        particleCount: Math.floor(count * particleRatio)
+                    }));
+                }
+
+                fire(0.25, { spread: 26, startVelocity: 55 });
+                fire(0.2, { spread: 60 });
+                fire(0.35, { spread: 100, decay: 0.91, scalar: 0.8 });
+                fire(0.1, { spread: 120, startVelocity: 25, decay: 0.92, scalar: 1.2 });
+                fire(0.1, { spread: 120, startVelocity: 45 });
+            };
+
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                const emailValue = emailInput.value.trim();
+
+                // Validate
+                if (!emailValue || !isValidEmail(emailValue)) {
+                    errorMsg.classList.add('visible');
+                    emailInput.style.borderColor = 'var(--error)';
+
+                    // Haptic shake animation
+                    formWrapper.style.transform = 'translateX(5px)';
+                    setTimeout(() => formWrapper.style.transform = 'translateX(-5px)', 50);
+                    setTimeout(() => formWrapper.style.transform = 'translateX(5px)', 100);
+                    setTimeout(() => formWrapper.style.transform = 'translateX(0)', 150);
+                    return;
+                }
+
+                // Set Loading State
+                errorMsg.classList.remove('visible');
+                submitBtn.textContent = 'Joining...';
+                submitBtn.disabled = true;
+
+                try {
+                    // Gather Data
+                    const userInfo = await getUserInfo();
+                    const formData = new FormData();
+
+                    formData.append("email-address", emailValue);
+                    formData.append("timestamp", new Date().toISOString());
+                    formData.append("ip", userInfo.ip);
+                    formData.append("country", userInfo.country);
+                    formData.append("user-agent", navigator.userAgent);
+                    formData.append("language", navigator.language);
+                    formData.append("product", "YT-BulkSub");
+
+                    // Send to Google Sheets
+                    const response = await fetch(GOOGLE_SCRIPT_URL, {
+                        method: "POST",
+                        body: formData
+                    });
+
+                    if (response.ok) {
+                        formWrapper.style.display = 'none';
+                        successWrapper.classList.add('visible');
+                        triggerConfetti();
+                    } else {
+                        throw new Error("Server error");
+                    }
+
+                } catch (err) {
+                    console.error("Network error:", err.message);
+                    submitBtn.textContent = 'Failed. Try Again.';
+                    submitBtn.disabled = false;
+                    errorMsg.textContent = "Something went wrong. Please try again.";
+                    errorMsg.classList.add('visible');
+                }
+            });
+
+            // Clear error on typing
+            emailInput.addEventListener('input', () => {
+                if (errorMsg.classList.contains('visible')) {
+                    errorMsg.classList.remove('visible');
+                    emailInput.style.borderColor = 'var(--border-heavy)';
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>
